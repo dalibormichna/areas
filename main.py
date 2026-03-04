@@ -1,0 +1,109 @@
+from flask import Flask, jsonify, request
+from flask_cors import CORS
+import requests, os
+
+app = Flask(__name__)
+CORS(app)
+
+ARES = "https://ares.gov.cz/ekonomicke-subjekty-v-be/rest/ekonomicke-subjekty/vyhledat"
+HEADERS = {"Content-Type": "application/json", "Accept": "application/json", "User-Agent": "Mozilla/5.0"}
+
+@app.route("/api/test")
+def test():
+    payload = {"czNace": ["5610"], "pocet": 3, "start": 0}
+    r = requests.post(ARES, json=payload, headers=HEADERS, timeout=30)
+    return jsonify({"status": r.status_code, "response": r.text[:1000]})
+
+@app.route("/api/test2")
+def test2():
+    payload = {"czNace": ["56"], "pocet": 3, "start": 0}
+    r = requests.post(ARES, json=payload, headers=HEADERS, timeout=30)
+    return jsonify({"status": r.status_code, "response": r.text[:1000]})
+
+@app.route("/api/search", methods=["POST"])
+def search():
+    body = request.json or {}
+    nace_codes = body.get("czNace", ["55", "56"])
+    obec = body.get("obec", "")
+    pocet = int(body.get("pocet", 100))
+
+    payload = {"czNace": nace_codes, "pocet": pocet, "start": 0}
+    if obec:
+        payload["sidlo"] = {"nazevObce": obec}
+
+    r = requests.post(ARES, json=payload, headers=HEADERS, timeout=30)
+
+    if not r.ok:
+        return jsonify({"ok": False, "error": f"ARES {r.status_code}: {r.text[:500]}"}), 502
+
+    data = r.json()
+    subjekty = data.get("ekonomickeSubjekty", [])
+
+    results = []
+    for s in subjekty:
+        sidlo = s.get("sidlo") or {}
+        ulice = sidlo.get("nazevUlice", "")
+        cd = sidlo.get("cisloDomovni", "")
+        co = sidlo.get("cisloOrientacni", "")
+        psc = sidlo.get("psc", "")
+        obec_n = sidlo.get("nazevObce", "")
+        okres = sidlo.get("nazevOkresu", "")
+        kraj = sidlo.get("nazevKraje", "")
+        cislo = str(cd) if cd else ""
+        if co:
+            cislo += "/" + str(co)
+        addr = ", ".join(p for p in [(ulice + " " + cislo).strip(), str(psc) if psc else "", obec_n] if p)
+        nace_list = s.get("czNace", [])
+        results.append({
+            "ico": s.get("ico", ""),
+            "name": s.get("obchodniJmeno", ""),
+            "nace": nace_list[0] if nace_list else "",
+            "date": s.get("datumVzniku", ""),
+            "updated": s.get("datumAktualizace", ""),
+            "addr": addr,
+            "ulice": ulice,
+            "obec": obec_n,
+            "okres": okres,
+            "kraj": kraj,
+            "psc": str(psc) if psc else "",
+            "dic": s.get("dic", ""),
+        })
+
+    return jsonify({"ok": True, "total": data.get("pocetCelkem", len(results)), "data": results})
+
+
+@app.route("/api/detail/<ico>")
+def detail(ico):
+    base_url = "https://ares.gov.cz/ekonomicke-subjekty-v-be/rest"
+    try:
+        r = requests.get(f"{base_url}/ekonomicke-subjekty/{ico}", headers=HEADERS, timeout=15)
+        r.raise_for_status()
+        base = r.json()
+        rzp = {}
+        try:
+            r2 = requests.get(f"{base_url}/ekonomicke-subjekty-rzp/{ico}", headers=HEADERS, timeout=15)
+            if r2.status_code == 200:
+                zaznamy = r2.json().get("zaznamy", [])
+                if zaznamy:
+                    z = zaznamy[0]
+                    osoby = z.get("angazovaneOsoby", [])
+                    provozovny = []
+                    for zivnost in z.get("zivnosti", []):
+                        for p in zivnost.get("provozovny", []):
+                            s = p.get("sidloProvozovny") or {}
+                            paddr = ", ".join(filter(None, [(s.get("nazevUlice", "") + " " + str(s.get("cisloDomovni", ""))).strip(), s.get("nazevObce", "")]))
+                            provozovny.append({"nazev": p.get("nazev", ""), "addr": paddr, "od": p.get("platnostOd", "")})
+                    rzp = {
+                        "osoby": [{"jmeno": (o.get("jmeno", "") + " " + o.get("prijmeni", "")).strip(), "funkce": o.get("typAngazma", ""), "od": o.get("platnostOd", "")} for o in osoby],
+                        "provozovny": provozovny,
+                    }
+        except Exception:
+            pass
+        return jsonify({"ok": True, "base": base, "rzp": rzp})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 502
+
+
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 5050))
+    app.run(host="0.0.0.0", port=port, debug=False)
