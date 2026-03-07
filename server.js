@@ -16,41 +16,35 @@ const HTML = `<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ARES Tracker — Restaurace & Hotely</title>
-<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<title>ARES Tracker — Gastro & Ubytování</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 :root{
-  --bg:#0a0c0f; --s1:#121518; --s2:#181c21; --s3:#1e2329;
-  --border:#252b34; --border2:#2e3744;
-  --accent:#f0a500; --a2:#e05a00; --green:#22c55e; --blue:#3b82f6;
-  --red:#ef4444; --text:#dde3ec; --muted:#6b7a8f; --mono:'IBM Plex Mono',monospace; --sans:'Syne',sans-serif;
+  --bg:#f0f2f5; --s1:#ffffff; --s2:#f5f7fa; --s3:#ebedf0;
+  --border:#d8dce3; --border2:#c4c9d4;
+  --accent:#2563eb; --a2:#1d4ed8; --green:#16a34a; --blue:#2563eb;
+  --red:#dc2626; --text:#111827; --muted:#6b7280; --mono:'IBM Plex Mono',monospace; --sans:'Inter',sans-serif;
 }
 *{box-sizing:border-box;margin:0;padding:0;}
 body{background:var(--bg);color:var(--text);font-family:var(--sans);min-height:100vh;font-size:14px;}
 
-body::before{content:'';position:fixed;inset:0;
-  background-image:linear-gradient(rgba(240,165,0,.025) 1px,transparent 1px),linear-gradient(90deg,rgba(240,165,0,.025) 1px,transparent 1px);
-  background-size:48px 48px;pointer-events:none;z-index:0;}
-
 header{
-  position:relative;z-index:2;padding:24px 32px 18px;
+  position:relative;z-index:2;padding:16px 28px;
   border-bottom:1px solid var(--border);
   display:flex;align-items:center;gap:16px;flex-wrap:wrap;
-  background:rgba(10,12,15,.8);backdrop-filter:blur(8px);
+  background:var(--s1);box-shadow:0 1px 4px rgba(0,0,0,.07);
 }
-.logo{font-size:1.6rem;font-weight:800;letter-spacing:-.04em;
-  background:linear-gradient(120deg,var(--accent),var(--a2));
-  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;}
-.logo-sub{font-family:var(--mono);font-size:.58rem;color:var(--muted);letter-spacing:.1em;text-transform:uppercase;margin-top:2px;}
+.logo{font-size:1.25rem;font-weight:700;letter-spacing:-.02em;color:var(--accent);}
+.logo-sub{font-family:var(--mono);font-size:.55rem;color:var(--muted);letter-spacing:.08em;text-transform:uppercase;margin-top:2px;}
 .tag{font-family:var(--mono);font-size:.6rem;padding:3px 9px;border-radius:20px;
-  background:rgba(34,197,94,.1);color:var(--green);border:1px solid rgba(34,197,94,.25);margin-left:auto;}
+  background:rgba(22,163,74,.1);color:var(--green);border:1px solid rgba(22,163,74,.3);margin-left:auto;}
 
-.layout{display:grid;grid-template-columns:280px 1fr;min-height:calc(100vh - 60px);position:relative;z-index:1;}
+.layout{display:grid;grid-template-columns:280px 1fr;min-height:calc(100vh - 57px);}
 
 aside{
   background:var(--s1);border-right:1px solid var(--border);
   padding:20px 16px;display:flex;flex-direction:column;gap:14px;
-  position:sticky;top:0;height:calc(100vh - 60px);overflow-y:auto;
+  position:sticky;top:0;height:calc(100vh - 57px);overflow-y:auto;
 }
 .section-label{font-family:var(--mono);font-size:.58rem;text-transform:uppercase;letter-spacing:.12em;
   color:var(--muted);margin-bottom:6px;padding-bottom:5px;border-bottom:1px solid var(--border);}
@@ -93,6 +87,12 @@ main{padding:20px 24px;overflow:hidden;}
   padding:8px 13px;outline:none;
 }
 .search-input:focus{border-color:var(--accent);}
+.sort-select{
+  background:var(--s2);border:1px solid var(--border2);border-radius:7px;
+  color:var(--text);font-family:var(--mono);font-size:.72rem;padding:8px 10px;
+  outline:none;-webkit-appearance:none;cursor:pointer;white-space:nowrap;
+}
+.sort-select:focus{border-color:var(--accent);}
 
 .stats{display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap;}
 .stat{background:var(--s2);border:1px solid var(--border);border-radius:8px;padding:10px 14px;flex:1;min-width:90px;}
@@ -108,8 +108,8 @@ thead th{
   cursor:pointer;
 }
 tbody tr{border-bottom:1px solid var(--border);transition:background .1s;cursor:pointer;}
-tbody tr:hover{background:rgba(240,165,0,0.04);}
-tbody tr.selected{background:rgba(240,165,0,0.07)!important;}
+tbody tr:hover{background:rgba(37,99,235,0.04);}
+tbody tr.selected{background:rgba(37,99,235,0.07)!important;}
 td{padding:9px 11px;vertical-align:middle;font-size:.78rem;}
 .td-name{font-weight:600;max-width:220px;}
 .td-name small{display:block;font-family:var(--mono);font-size:.62rem;color:var(--muted);font-weight:400;margin-top:2px;}
@@ -117,17 +117,18 @@ td{padding:9px 11px;vertical-align:middle;font-size:.78rem;}
 .td-addr{font-size:.72rem;color:var(--muted);max-width:200px;line-height:1.4;}
 
 .badge{display:inline-block;padding:2px 7px;border-radius:4px;font-size:.6rem;font-weight:600;text-transform:uppercase;letter-spacing:.04em;}
-.bh{background:rgba(59,130,246,.12);color:#60a5fa;border:1px solid rgba(59,130,246,.25);}
-.br{background:rgba(240,165,0,.12);color:var(--accent);border:1px solid rgba(240,165,0,.25);}
-.bp{background:rgba(34,197,94,.12);color:var(--green);border:1px solid rgba(34,197,94,.25);}
-.bo{background:rgba(107,122,143,.12);color:var(--muted);border:1px solid rgba(107,122,143,.25);}
+.bh{background:rgba(37,99,235,.1);color:#1d4ed8;border:1px solid rgba(37,99,235,.25);}
+.br{background:rgba(37,99,235,.08);color:var(--accent);border:1px solid rgba(37,99,235,.2);}
+.bp{background:rgba(22,163,74,.1);color:var(--green);border:1px solid rgba(22,163,74,.25);}
+.bc{background:rgba(124,58,237,.1);color:#7c3aed;border:1px solid rgba(124,58,237,.25);}
+.bo{background:rgba(107,114,128,.1);color:var(--muted);border:1px solid rgba(107,114,128,.2);}
 .new-dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--green);margin-right:5px;vertical-align:middle;}
 
 .pgn{display:flex;align-items:center;gap:6px;padding:10px 12px;border-top:1px solid var(--border);flex-wrap:wrap;}
 .pgn span{font-family:var(--mono);font-size:.65rem;color:var(--muted);flex:1;}
 .pb{background:var(--s2);border:1px solid var(--border);color:var(--text);border-radius:5px;
   padding:4px 10px;cursor:pointer;font-family:var(--mono);font-size:.68rem;}
-.pb.act{background:rgba(240,165,0,.12);border-color:var(--accent);color:var(--accent);}
+.pb.act{background:rgba(37,99,235,.1);border-color:var(--accent);color:var(--accent);}
 
 .state{text-align:center;padding:56px 20px;}
 .spinner{display:inline-block;width:26px;height:26px;border:2.5px solid var(--border2);
@@ -156,7 +157,7 @@ td{padding:9px 11px;vertical-align:middle;font-size:.78rem;}
 .dp-note{font-family:var(--mono);font-size:.62rem;color:var(--muted);background:var(--s2);
   border:1px solid var(--border);border-radius:6px;padding:9px 11px;line-height:1.6;}
 .dp-note b{color:var(--red);}
-.dp-btn{width:100%;text-align:center;background:rgba(240,165,0,0.08);border:1px solid rgba(240,165,0,.25);
+.dp-btn{width:100%;text-align:center;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,.25);
   color:var(--accent);border-radius:6px;padding:8px;font-family:var(--mono);font-size:.7rem;
   cursor:pointer;text-decoration:none;display:block;}
 .person-card,.prov-card{background:var(--s2);border:1px solid var(--border);border-radius:6px;padding:9px 11px;margin-bottom:6px;font-size:.73rem;}
@@ -185,9 +186,15 @@ td{padding:9px 11px;vertical-align:middle;font-size:.78rem;}
     <div class="section-label">Typ podniku</div>
     <div class="field">
       <select id="selType">
-        <option value="55,56">Vše (ubytování + stravování)</option>
-        <option value="56">Stravování (56xx)</option>
-        <option value="55">Ubytování (55xx)</option>
+        <option value="gastro">Vše gastro + ubytování</option>
+        <option value="56">Stravování vše (56xx)</option>
+        <option value="5610">Restaurace / pohostinství</option>
+        <option value="5629">Jídelny, závodní strav., vývařovny</option>
+        <option value="5621">Catering / dodávka jídel</option>
+        <option value="5630">Bary, kavárny, pivnice</option>
+        <option value="55">Ubytování vše (55xx)</option>
+        <option value="5510">Hotely ★★★+</option>
+        <option value="5590">Penziony, hostely</option>
       </select>
     </div>
   </div>
@@ -224,7 +231,12 @@ td{padding:9px 11px;vertical-align:middle;font-size:.78rem;}
 
 <main>
   <div class="topbar">
-    <input class="search-input" id="searchInput" placeholder="Hledat..." oninput="applyFilters()">
+    <input class="search-input" id="searchInput" placeholder="Hledat název, IČO, obec…" oninput="applyFilters()">
+    <select class="sort-select" id="selSort" onchange="applyFilters()">
+      <option value="date_desc">Vznik ↓ nejnovější</option>
+      <option value="date_asc">Vznik ↑ nejstarší</option>
+      <option value="name_asc">Název A→Z</option>
+    </select>
   </div>
 
   <div class="stats" id="statsBar" style="display:none">
@@ -239,7 +251,13 @@ td{padding:9px 11px;vertical-align:middle;font-size:.78rem;}
     </div>
     <div id="tblWrap" style="display:none">
       <table>
-        <thead><tr><th>Název</th><th>IČO</th><th>Typ</th><th>Vznik</th><th>Adresa</th></tr></thead>
+        <thead><tr>
+          <th>Název</th>
+          <th>IČO</th>
+          <th>Typ</th>
+          <th onclick="toggleDateSort()" style="cursor:pointer" id="thDate">Vznik ↓</th>
+          <th>Adresa</th>
+        </tr></thead>
         <tbody id="tBody"></tbody>
       </table>
       <div class="pgn" id="pgn"></div>
@@ -260,10 +278,25 @@ td{padding:9px 11px;vertical-align:middle;font-size:.78rem;}
 let all=[], fil=[], pg=0, selIco=null;
 const PS=30;
 
-const NM={'55':'Ubytování','56':'Stravování','5610':'Restaurace'};
-const nm=c=>NM[c]||NM[c.slice(0,4)]||NM[c.slice(0,2)]||c;
-const gt=n=>n?.startsWith('55')?'pension':n?.startsWith('56')?'rest':'other';
-const bdg=t=>\`<span class="badge \${t==='rest'?'br':t==='pension'?'bp':'bo'}">\${t}</span>\`;
+const NM={
+  '5610':'Restaurace','5621':'Catering','5629':'Jídelna/Výv.',
+  '5630':'Bar/Kavárna','5510':'Hotel','5520':'Kemp/Chata',
+  '5530':'Kempy','5590':'Penzion/Hostel'
+};
+const nm=c=>c?(NM[c]||NM[c.slice(0,4)]||(c.startsWith('56')?'Stravování':c.startsWith('55')?'Ubytování':c)):'—';
+const gt=n=>{
+  if(!n) return 'other';
+  if(n.startsWith('5510')) return 'hotel';
+  if(n.startsWith('55'))   return 'pension';
+  if(n==='5621')           return 'catering';
+  if(n.startsWith('56'))   return 'rest';
+  return 'other';
+};
+const bdg=t=>{
+  const m={hotel:['bh','Hotel'],pension:['bp','Ubytování'],rest:['br','Restaurace'],catering:['bc','Catering'],other:['bo','Jiné']};
+  const[c,l]=m[t]||m.other;
+  return \`<span class="badge \${c}">\${l}</span>\`;
+};
 const fmt=d=>d?new Date(d).toLocaleDateString('cs-CZ'):'—';
 
 async function checkServer(){
@@ -277,6 +310,7 @@ checkServer();
 async function fetchData(){
   const btn=document.getElementById('btnFetch');
   btn.disabled=true;
+  btn.textContent='⏳ Načítám…';
   const obec=document.getElementById('inpObec').value;
   const tv=document.getElementById('selType').value;
   
@@ -284,23 +318,59 @@ async function fetchData(){
     const r=await fetch('/api/search',{
       method:'POST',
       headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({czNace:tv.split(','),obec,pocet:200})
+      body:JSON.stringify({czNace:tv,obec,pocet:500})
     });
     const res=await r.json();
     if(res.ok){
       all=res.data;
+      document.getElementById('btnExport').disabled=false;
       applyFilters();
+    } else {
+      alert('Chyba: '+(res.error||'neznámá'));
     }
-  }catch(e){alert('Chyba spojení');}
+  }catch(e){alert('Chyba spojení: '+e.message);}
   btn.disabled=false;
+  btn.textContent='🔍 Načíst z ARES';
 }
 
 function applyFilters(){
   const q=document.getElementById('searchInput').value.toLowerCase();
-  fil=all.filter(d=>d.name.toLowerCase().includes(q)||d.ico.includes(q));
+  const months=parseInt(document.getElementById('selPeriod').value||'0');
+  const sort=document.getElementById('selSort').value;
+
+  let list=all.filter(d=>{
+    if(q && !(d.name.toLowerCase().includes(q)||d.ico.includes(q)||d.addr.toLowerCase().includes(q))) return false;
+    if(months){
+      if(!d.date) return false;
+      const cutoff=new Date();
+      cutoff.setMonth(cutoff.getMonth()-months);
+      if(new Date(d.date)<cutoff) return false;
+    }
+    return true;
+  });
+
+  if(sort==='date_desc') list.sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+  else if(sort==='date_asc') list.sort((a,b)=>(a.date||'').localeCompare(b.date||''));
+  else if(sort==='name_asc') list.sort((a,b)=>a.name.localeCompare(b.name,'cs'));
+
+  // Update header arrow
+  const th=document.getElementById('thDate');
+  if(th){
+    if(sort==='date_desc') th.textContent='Vznik ↓';
+    else if(sort==='date_asc') th.textContent='Vznik ↑';
+    else th.textContent='Vznik';
+  }
+
+  fil=list;
   pg=0;
   updateStats();
   renderTable();
+}
+
+function toggleDateSort(){
+  const sel=document.getElementById('selSort');
+  sel.value=(sel.value==='date_desc')?'date_asc':'date_desc';
+  applyFilters();
 }
 
 function updateStats(){
@@ -400,19 +470,36 @@ app.get('/', (req, res) => res.send(HTML));
 app.get('/ping', (req, res) => res.json({ ok: true, v: '5-fixed' }));
 
 app.post('/api/search', async (req, res) => {
+  // CZ-NACE kódy pro gastro a ubytování (4-místné kódy fungují v ARES API)
+  // 56xx = stravování a pohostinství
+  //   5610 = restaurace, pohostinství, rychlé občerstvení
+  //   5621 = catering, cateringové služby
+  //   5629 = závodní jídelny, školní jídelny, vývařovny, závodní stravování, bufety
+  //   5630 = bary, pivnice, kavárny, vinárny, diskotéky
+  // 55xx = ubytování
+  //   5510 = hotely a podobná ubytovací zařízení
+  //   5520 = chatové osady, tábořiště, kempy
+  //   5530 = rekreační parky pro obytné vozy
+  //   5590 = ostatní ubytování (penziony, hostely, turistické ubytovny)
   const NACE_MAP = {
-    '56':    ['56'],
-    '5610':  ['5610'],
-    '5630':  ['5630'],
-    '55':    ['5510','5520','5530','5590'],
-    '5510':  ['5510'],
-    '55,56': ['56','5510','5520','5530','5590'],
+    'gastro': ['5610','5629','5621','5630','5510','5590','5520'],
+    '56':     ['5610','5629','5621','5630'],
+    '5610':   ['5610'],
+    '5621':   ['5621'],
+    '5629':   ['5629'],
+    '5630':   ['5630'],
+    '55':     ['5510','5590','5520','5530'],
+    '5510':   ['5510'],
+    '5590':   ['5590'],
+    '5520':   ['5520'],
+    '55,56':  ['5610','5629','5621','5630','5510','5590','5520'],
   };
 
   try {
-    const { czNace = ['56'], obec = '', pocet = 100 } = req.body;
+    const { czNace = 'gastro', obec = '', pocet = 200 } = req.body;
+    // czNace může být string (klíč do mapy) nebo array (zpětná kompatibilita)
     const inputKey = Array.isArray(czNace) ? czNace.join(',') : String(czNace);
-    const naceArr = NACE_MAP[inputKey] || NACE_MAP[czNace[0]] || [inputKey];
+    const naceArr = NACE_MAP[inputKey] || [inputKey];
     const maxCount = Math.min(Number(pocet)||100, 500);
     const obecFilter = obec ? obec.trim().toLowerCase() : '';
 
