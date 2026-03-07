@@ -168,6 +168,7 @@ td{padding:9px 11px;vertical-align:middle;font-size:.78rem;}
   aside{position:static;height:auto;}
   .detail-panel{width:100%;}
 }
+.ver{position:fixed;bottom:6px;right:10px;font-family:var(--mono);font-size:.55rem;color:var(--muted);opacity:.5;pointer-events:none;}
 </style>
 </head>
 <body>
@@ -273,6 +274,8 @@ td{padding:9px 11px;vertical-align:middle;font-size:.78rem;}
   </div>
   <div class="dp-body" id="dpBody"></div>
 </div>
+
+<div class="ver">v7</div>
 
 <script>
 let all=[], fil=[], pg=0, selIco=null;
@@ -434,14 +437,13 @@ function exportCSV(){ /* implementace exportu */ }
 function aresRequest(method, path, payload) {
   return new Promise((resolve, reject) => {
     const body = payload ? JSON.stringify(payload) : null;
-    const opts = {
-      hostname: ARES, path, method,
-      headers: { 
-        'Content-Type': 'application/json', 
-        'Accept': 'application/json',
-        'User-Agent': 'Mozilla/5.0'
-      }
+    const headers = {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+      'User-Agent': 'Mozilla/5.0'
     };
+    if (body) headers['Content-Length'] = Buffer.byteLength(body);
+    const opts = { hostname: ARES, path, method, headers };
     const req = https.request(opts, res => {
       let data = '';
       res.on('data', chunk => data += chunk);
@@ -451,7 +453,8 @@ function aresRequest(method, path, payload) {
       });
     });
     req.on('error', reject);
-    if (body) req.write(body); // Klíčová oprava pro POST
+    req.setTimeout(30000, () => { req.destroy(); reject(new Error('ARES timeout')); });
+    if (body) req.write(body);
     req.end();
   });
 }
@@ -467,8 +470,16 @@ function buildResult(s) {
 }
 
 app.get('/', (req, res) => res.send(HTML));
-app.get('/ping', (req, res) => res.json({ ok: true, v: '5-fixed' }));
+app.get('/ping', (req, res) => res.json({ ok: true, v: '8' }));
 
+// DEBUG - ukáže co reálně vrací ARES pro daný NACE kód
+app.get('/api/debug/:nace', async (req, res) => {
+  try {
+    const payload = { czNace: [req.params.nace], pocet: 3, start: 0 };
+    const r = await aresRequest('POST', SEARCH_PATH, payload);
+    res.json({ status: r.status, payload, raw: r.raw || null, json: r.json });
+  } catch(e) { res.json({ error: e.message }); }
+});
 app.post('/api/search', async (req, res) => {
   // CZ-NACE kódy pro gastro a ubytování (4-místné kódy fungují v ARES API)
   // 56xx = stravování a pohostinství
