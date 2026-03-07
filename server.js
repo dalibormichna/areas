@@ -203,7 +203,7 @@ td{padding:9px 11px;vertical-align:middle;font-size:.78rem;}
   <div>
     <div class="section-label">Filtr vzniku</div>
     <div class="field">
-      <select id="selPeriod">
+      <select id="selPeriod" onchange="applyFilters()">
         <option value="0">— všechny —</option>
         <option value="6">6 měsíců</option>
         <option value="12">12 měsíců</option>
@@ -297,7 +297,13 @@ async function fetchData(){
 
 function applyFilters(){
   const q=document.getElementById('searchInput').value.toLowerCase();
-  fil=all.filter(d=>d.name.toLowerCase().includes(q)||d.ico.includes(q));
+  const months=parseInt(document.getElementById('selPeriod').value||'0');
+  const cutoff=months?new Date(Date.now()-months*30*24*60*60*1000):null;
+  fil=all.filter(d=>{
+    if(q&&!(d.name.toLowerCase().includes(q)||d.ico.includes(q)||d.addr.toLowerCase().includes(q)))return false;
+    if(cutoff&&d.date&&new Date(d.date)<cutoff)return false;
+    return true;
+  });
   pg=0;
   updateStats();
   renderTable();
@@ -402,11 +408,19 @@ app.get('/ping', (req, res) => res.json({ ok: true, v: '5-fixed' }));
 app.post('/api/search', async (req, res) => {
   try {
     const { czNace = ['56'], obec = '', pocet = 100 } = req.body;
-    const payload = { czNace, pocet: Math.min(pocet, 500) };
-    if (obec) payload.sidlo = { nazevObce: obec };
-    const r = await aresRequest('POST', SEARCH_PATH, payload);
-    const subjekty = (r.json && r.json.ekonomickeSubjekty) ? r.json.ekonomickeSubjekty : [];
-    res.json({ ok: true, data: subjekty.map(buildResult) });
+    const naceArr = Array.isArray(czNace) ? czNace : [czNace];
+    const seen = new Set();
+    const results = [];
+    for (const nace of naceArr) {
+      const payload = { czNace: [String(nace)], pocet: Math.min(Number(pocet)||100, 500), start: 0 };
+      if (obec && obec.trim()) payload.sidlo = { nazevObce: obec.trim() };
+      const r = await aresRequest('POST', SEARCH_PATH, payload);
+      if (r.status !== 200) return res.status(502).json({ ok: false, error: `ARES ${r.status}`, raw: r.raw });
+      for (const s of (r.json && r.json.ekonomickeSubjekty) || []) {
+        if (!seen.has(s.ico)) { seen.add(s.ico); results.push(buildResult(s)); }
+      }
+    }
+    res.json({ ok: true, total: results.length, data: results });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 
