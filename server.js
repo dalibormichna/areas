@@ -400,40 +400,61 @@ app.get('/', (req, res) => res.send(HTML));
 app.get('/ping', (req, res) => res.json({ ok: true, v: '5-fixed' }));
 
 app.post('/api/search', async (req, res) => {
+  const NACE_MAP = {
+    '56':    ['56'],
+    '5610':  ['5610'],
+    '5630':  ['5630'],
+    '55':    ['5510','5520','5530','5590'],
+    '5510':  ['5510'],
+    '55,56': ['56','5510','5520','5530','5590'],
+  };
+
   try {
     const { czNace = ['56'], obec = '', pocet = 100 } = req.body;
-    const naceArr = Array.isArray(czNace) ? czNace : [czNace];
+    const inputKey = Array.isArray(czNace) ? czNace.join(',') : String(czNace);
+    const naceArr = NACE_MAP[inputKey] || NACE_MAP[czNace[0]] || [inputKey];
+    const maxCount = Math.min(Number(pocet)||100, 500);
+    const obecFilter = obec ? obec.trim().toLowerCase() : '';
+
     const seen = new Set();
     const results = [];
+
     for (const nace of naceArr) {
-      const payload = { czNace: [String(nace)], pocet: Math.min(Number(pocet)||100, 500), start: 0 };
-      if (obec && obec.trim()) payload.sidlo = { nazevObce: obec.trim() };
-      console.log('ARES payload:', JSON.stringify(payload));
+      // Fetch more results when filtering by city since ARES sidlo filter is unreliable
+      const fetchCount = obecFilter ? 500 : maxCount;
+      const payload = { czNace: [nace], pocet: fetchCount, start: 0 };
+      
+      console.log('ARES request:', JSON.stringify(payload));
       const r = await aresRequest('POST', SEARCH_PATH, payload);
-      console.log('ARES status:', r.status, 'pocetCelkem:', r.json && r.json.pocetCelkem, 'subjekty:', r.json && r.json.ekonomickeSubjekty && r.json.ekonomickeSubjekty.length);
-      if (r.status !== 200) return res.status(502).json({ ok: false, error: `ARES ${r.status}`, raw: r.raw });
-      for (const s of (r.json && r.json.ekonomickeSubjekty) || []) {
-        if (!seen.has(s.ico)) { seen.add(s.ico); results.push(buildResult(s)); }
+      console.log('ARES response: status=' + r.status + ' total=' + (r.json && r.json.pocetCelkem) + ' count=' + (r.json && r.json.ekonomickeSubjekty && r.json.ekonomickeSubjekty.length));
+      
+      if (r.status !== 200) {
+        console.log('ARES error for nace=' + nace + ':', r.raw && r.raw.slice(0,200));
+        continue; // skip this nace code, try next
+      }
+
+      const subjekty = (r.json && r.json.ekonomickeSubjekty) || [];
+      for (const s of subjekty) {
+        if (seen.has(s.ico)) continue;
+        const result = buildResult(s);
+        // Filter by city locally - much more reliable than ARES sidlo filter
+        if (obecFilter) {
+          const match = result.obec.toLowerCase().includes(obecFilter) ||
+                        result.addr.toLowerCase().includes(obecFilter);
+          if (!match) continue;
+        }
+        if (results.length >= maxCount) break;
+        seen.add(s.ico);
+        results.push(result);
       }
     }
-    res.json({ ok: true, total: results.length, data: results });
-  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
-});
 
-// Debug: test ARES directly
-app.get('/api/test', async (req, res) => {
-  const tests = [
-    { czNace: ['56'], pocet: 5, start: 0 },
-    { czNace: ['56'], pocet: 5, start: 0, sidlo: { nazevObce: 'Praha' } },
-    { czNace: ['55'], pocet: 5, start: 0 },
-  ];
-  const out = [];
-  for (const payload of tests) {
-    const r = await aresRequest('POST', SEARCH_PATH, payload);
-    out.push({ payload, status: r.status, pocetCelkem: r.json && r.json.pocetCelkem, count: r.json && r.json.ekonomickeSubjekty && r.json.ekonomickeSubjekty.length, firstIco: r.json && r.json.ekonomickeSubjekty && r.json.ekonomickeSubjekty[0] && r.json.ekonomickeSubjekty[0].ico });
+    res.json({ ok: true, total: results.length, data: results });
+  } catch (e) {
+    console.error('Search error:', e.message);
+    res.status(500).json({ ok: false, error: e.message });
   }
-  res.json(out);
-});
+})
 
 app.get('/api/detail/:ico', async (req, res) => {
   try {
