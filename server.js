@@ -203,7 +203,7 @@ td{padding:9px 11px;vertical-align:middle;font-size:.78rem;}
   <div>
     <div class="section-label">Filtr vzniku</div>
     <div class="field">
-      <select id="selPeriod" onchange="applyFilters()">
+      <select id="selPeriod">
         <option value="0">— všechny —</option>
         <option value="6">6 měsíců</option>
         <option value="12">12 měsíců</option>
@@ -297,13 +297,7 @@ async function fetchData(){
 
 function applyFilters(){
   const q=document.getElementById('searchInput').value.toLowerCase();
-  const months=parseInt(document.getElementById('selPeriod').value||'0');
-  const cutoff=months?new Date(Date.now()-months*30*24*60*60*1000):null;
-  fil=all.filter(d=>{
-    if(q&&!(d.name.toLowerCase().includes(q)||d.ico.includes(q)||d.addr.toLowerCase().includes(q)))return false;
-    if(cutoff&&d.date&&new Date(d.date)<cutoff)return false;
-    return true;
-  });
+  fil=all.filter(d=>d.name.toLowerCase().includes(q)||d.ico.includes(q));
   pg=0;
   updateStats();
   renderTable();
@@ -414,7 +408,9 @@ app.post('/api/search', async (req, res) => {
     for (const nace of naceArr) {
       const payload = { czNace: [String(nace)], pocet: Math.min(Number(pocet)||100, 500), start: 0 };
       if (obec && obec.trim()) payload.sidlo = { nazevObce: obec.trim() };
+      console.log('ARES payload:', JSON.stringify(payload));
       const r = await aresRequest('POST', SEARCH_PATH, payload);
+      console.log('ARES status:', r.status, 'pocetCelkem:', r.json && r.json.pocetCelkem, 'subjekty:', r.json && r.json.ekonomickeSubjekty && r.json.ekonomickeSubjekty.length);
       if (r.status !== 200) return res.status(502).json({ ok: false, error: `ARES ${r.status}`, raw: r.raw });
       for (const s of (r.json && r.json.ekonomickeSubjekty) || []) {
         if (!seen.has(s.ico)) { seen.add(s.ico); results.push(buildResult(s)); }
@@ -422,6 +418,21 @@ app.post('/api/search', async (req, res) => {
     }
     res.json({ ok: true, total: results.length, data: results });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+// Debug: test ARES directly
+app.get('/api/test', async (req, res) => {
+  const tests = [
+    { czNace: ['56'], pocet: 5, start: 0 },
+    { czNace: ['56'], pocet: 5, start: 0, sidlo: { nazevObce: 'Praha' } },
+    { czNace: ['55'], pocet: 5, start: 0 },
+  ];
+  const out = [];
+  for (const payload of tests) {
+    const r = await aresRequest('POST', SEARCH_PATH, payload);
+    out.push({ payload, status: r.status, pocetCelkem: r.json && r.json.pocetCelkem, count: r.json && r.json.ekonomickeSubjekty && r.json.ekonomickeSubjekty.length, firstIco: r.json && r.json.ekonomickeSubjekty && r.json.ekonomickeSubjekty[0] && r.json.ekonomickeSubjekty[0].ico });
+  }
+  res.json(out);
 });
 
 app.get('/api/detail/:ico', async (req, res) => {
