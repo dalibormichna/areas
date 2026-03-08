@@ -275,7 +275,7 @@ td{padding:9px 11px;vertical-align:middle;font-size:.78rem;}
   <div class="dp-body" id="dpBody"></div>
 </div>
 
-<div class="ver">v7</div>
+<div class="ver">v9</div>
 
 <script>
 let all=[], fil=[], pg=0, selIco=null;
@@ -470,7 +470,7 @@ function buildResult(s) {
 }
 
 app.get('/', (req, res) => res.send(HTML));
-app.get('/ping', (req, res) => res.json({ ok: true, v: '8' }));
+app.get('/ping', (req, res) => res.json({ ok: true, v: '9' }));
 
 // DEBUG - ukáže co reálně vrací ARES pro daný NACE kód
 app.get('/api/debug/:nace', async (req, res) => {
@@ -481,70 +481,85 @@ app.get('/api/debug/:nace', async (req, res) => {
   } catch(e) { res.json({ error: e.message }); }
 });
 app.post('/api/search', async (req, res) => {
-  // CZ-NACE kódy pro gastro a ubytování (4-místné kódy fungují v ARES API)
-  // 56xx = stravování a pohostinství
+  // ARES API přijímá jen 2-místné prefixové kódy (56, 55).
+  // 4-místné kódy vrátí 0 výsledků. Proto:
+  //   1. Dotaz vždy posíláme s 2-místným kódem (56 nebo 55)
+  //   2. Výsledky lokálně filtrujeme podle pole czNace2008 které obsahuje přesné 4-místné kódy
+  //
+  // CZ-NACE 4-místné kódy (pro lokální filtrování):
   //   5610 = restaurace, pohostinství, rychlé občerstvení
-  //   5621 = catering, cateringové služby
-  //   5629 = závodní jídelny, školní jídelny, vývařovny, závodní stravování, bufety
-  //   5630 = bary, pivnice, kavárny, vinárny, diskotéky
-  // 55xx = ubytování
-  //   5510 = hotely a podobná ubytovací zařízení
-  //   5520 = chatové osady, tábořiště, kempy
-  //   5530 = rekreační parky pro obytné vozy
-  //   5590 = ostatní ubytování (penziony, hostely, turistické ubytovny)
-  const NACE_MAP = {
-    'gastro': ['5610','5629','5621','5630','5510','5590','5520'],
-    '56':     ['5610','5629','5621','5630'],
-    '5610':   ['5610'],
-    '5621':   ['5621'],
-    '5629':   ['5629'],
-    '5630':   ['5630'],
-    '55':     ['5510','5590','5520','5530'],
-    '5510':   ['5510'],
-    '5590':   ['5590'],
-    '5520':   ['5520'],
-    '55,56':  ['5610','5629','5621','5630','5510','5590','5520'],
+  //   5621 = catering
+  //   5629 = závodní/školní jídelny, vývařovny, bufety
+  //   5630 = bary, kavárny, pivnice
+  //   5510 = hotely
+  //   5520 = kempy, chaty
+  //   5590 = penziony, hostely
+
+  // Co poslat do ARES a jaké 4místné kódy akceptovat lokálně
+  const QUERY_MAP = {
+    'gastro': { query:['56','55'], accept:['5610','5621','5629','5630','5510','5520','5590'] },
+    '56':     { query:['56'],      accept:['5610','5621','5629','5630'] },
+    '5610':   { query:['56'],      accept:['5610'] },
+    '5621':   { query:['56'],      accept:['5621'] },
+    '5629':   { query:['56'],      accept:['5629'] },
+    '5630':   { query:['56'],      accept:['5630'] },
+    '55':     { query:['55'],      accept:['5510','5520','5590','5530'] },
+    '5510':   { query:['55'],      accept:['5510'] },
+    '5590':   { query:['55'],      accept:['5590'] },
+    '5520':   { query:['55'],      accept:['5520'] },
   };
 
   try {
     const { czNace = 'gastro', obec = '', pocet = 200 } = req.body;
-    // czNace může být string (klíč do mapy) nebo array (zpětná kompatibilita)
     const inputKey = Array.isArray(czNace) ? czNace.join(',') : String(czNace);
-    const naceArr = NACE_MAP[inputKey] || [inputKey];
-    const maxCount = Math.min(Number(pocet)||100, 500);
+    const cfg = QUERY_MAP[inputKey] || { query:['56'], accept:[] };
+    const maxCount = Math.min(Number(pocet)||200, 500);
     const obecFilter = obec ? obec.trim().toLowerCase() : '';
 
     const seen = new Set();
     const results = [];
 
-    for (const nace of naceArr) {
-      // Fetch more results when filtering by city since ARES sidlo filter is unreliable
-      const fetchCount = obecFilter ? 500 : maxCount;
-      const payload = { czNace: [nace], pocet: fetchCount, start: 0 };
-      
+    for (const qNace of cfg.query) {
+      const fetchCount = obecFilter ? 1000 : 500;
+      const payload = { czNace: [qNace], pocet: fetchCount, start: 0 };
+
       console.log('ARES request:', JSON.stringify(payload));
       const r = await aresRequest('POST', SEARCH_PATH, payload);
-      console.log('ARES response: status=' + r.status + ' total=' + (r.json && r.json.pocetCelkem) + ' count=' + (r.json && r.json.ekonomickeSubjekty && r.json.ekonomickeSubjekty.length));
-      
-      if (r.status !== 200) {
-        console.log('ARES error for nace=' + nace + ':', r.raw && r.raw.slice(0,200));
-        continue; // skip this nace code, try next
+      console.log('ARES response: status=' + r.status + ' pocetCelkem=' + (r.json?.pocetCelkem) + ' returned=' + (r.json?.ekonomickeSubjekty?.length));
+
+      if (r.status !== 200 || !r.json) {
+        console.log('ARES error nace=' + qNace + ':', r.raw?.slice(0,300));
+        continue;
       }
 
-      const subjekty = (r.json && r.json.ekonomickeSubjekty) || [];
+      const subjekty = r.json.ekonomickeSubjekty || [];
       for (const s of subjekty) {
         if (seen.has(s.ico)) continue;
+
+        // Lokální filtr: subjekt musí mít aspoň jeden akceptovaný 4místný NACE kód
+        // Pole czNace2008 obsahuje přesné kódy jako "25610", "5610", "85321" atd.
+        // Pole czNace obsahuje zkrácené kódy jako "56", "5610"
+        const naceAll = [...(s.czNace2008 || []), ...(s.czNace || [])];
+        const hasMatch = cfg.accept.length === 0 || naceAll.some(n => cfg.accept.some(a => n === a || n.endsWith(a)));
+        if (!hasMatch) continue;
+
         const result = buildResult(s);
-        // Filter by city locally - much more reliable than ARES sidlo filter
+
+        // Město filtr
         if (obecFilter) {
           const match = result.obec.toLowerCase().includes(obecFilter) ||
                         result.addr.toLowerCase().includes(obecFilter);
           if (!match) continue;
         }
-        if (results.length >= maxCount) break;
+
         seen.add(s.ico);
+        // Ulož nejlepší matching NACE kód (4místný pokud možno)
+        const bestNace = naceAll.find(n => cfg.accept.some(a => n === a || n.endsWith(a))) || result.nace;
+        result.nace = bestNace.length > 4 ? bestNace.slice(-4) : bestNace;
         results.push(result);
+        if (results.length >= maxCount) break;
       }
+      if (results.length >= maxCount) break;
     }
 
     res.json({ ok: true, total: results.length, data: results });
