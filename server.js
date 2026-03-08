@@ -275,7 +275,7 @@ td{padding:9px 11px;vertical-align:middle;font-size:.78rem;}
   <div class="dp-body" id="dpBody"></div>
 </div>
 
-<div class="ver">v20</div>
+<div class="ver">v21</div>
 
 <script>
 let all=[], fil=[], pg=0, selIco=null;
@@ -486,7 +486,7 @@ function buildResult(s) {
 }
 
 app.get('/', (req, res) => res.send(HTML));
-app.get('/ping', (req, res) => res.json({ ok: true, v: '20' }));
+app.get('/ping', (req, res) => res.json({ ok: true, v: '21' }));
 
 // DEBUG
 app.get('/api/debug/:nace', async (req, res) => {
@@ -496,16 +496,17 @@ app.get('/api/debug/:nace', async (req, res) => {
       const r = await aresRequest('GET', DETAIL_PATH + nace, null);
       return res.json({ ico: nace, status: r.status, czNace: r.json?.czNace, czNace2008: r.json?.czNace2008, name: r.json?.obchodniJmeno, obec: r.json?.sidlo?.nazevObce, kodOkresu: r.json?.sidlo?.kodOkresu, kodKraje: r.json?.sidlo?.kodKraje });
     }
-    // Test kodOkresu — Frýdek-Místek okres = 3806
+    // Test nazevObce — zjistíme jestli Frýdek-Místek vrátí jiných výsledků
     const tests = [
-      { czNace: ['56'], pocet: 5, start: 0, sidlo: { kodOkresu: 3806 } },
-      { czNace: ['56'], pocet: 5, start: 0, sidlo: { kodOkresu: 3806 }, razeni: ['ICO'] },
-      { czNace: ['56'], pocet: 5, start: 492, sidlo: { kodOkresu: 3806 } },
+      { czNace: ['56'], pocet: 10, start: 0, sidlo: { nazevObce: 'Frýdek-Místek' } },
+      { czNace: ['56'], pocet: 10, start: 0 },  // bez filtru — porovnání
     ];
     const out = [];
     for (const p of tests) {
       const r = await aresRequest('POST', SEARCH_PATH, p);
-      out.push({ payload: p, status: r.status, pocetCelkem: r.json?.pocetCelkem, names: (r.json?.ekonomickeSubjekty||[]).map(s=>s.obchodniJmeno) });
+      const icos = (r.json?.ekonomickeSubjekty||[]).map(s => s.ico);
+      const hasVojtech = icos.includes('24541320');
+      out.push({ payload: p, status: r.status, pocetCelkem: r.json?.pocetCelkem, hasVojtech, names: (r.json?.ekonomickeSubjekty||[]).map(s => s.obchodniJmeno + ' (' + s.ico + ')') });
     }
     res.json(out);
   } catch(e) { res.json({ error: e.message }); }
@@ -561,16 +562,39 @@ app.post('/api/search', async (req, res) => {
   };
   function naceMatch(s, cfg) {
     const codes = [...(s.czNace2008 || []), ...(s.czNace || [])];
-    // accept2: přijmout vše kde je kód přesně "56" nebo "55" (subjekt má gastro/ubytování jako hlavní nebo vedlejší obor)
     if (cfg.accept2) {
-      return codes.some(c => cfg.accept2.includes(c));
+      // startsWith — kódy jsou 2-5 místné, "56110".startsWith("56") = true
+      return codes.some(c => cfg.accept2.some(p => c === p || c.startsWith(p)));
     }
-    // accept4: přijmout jen pokud kód je PŘESNĚ 4místný kód (ne 25610, ale 5610)
     if (cfg.accept4) {
-      return codes.some(c => cfg.accept4.includes(c));
+      return codes.some(c => cfg.accept4.some(p => c === p || c.startsWith(p)));
     }
     return true;
   }
+
+  // 200 největších českých obcí — pro crawling bez filtru města
+  const MESTA = ['Praha','Brno','Ostrava','Plzeň','Liberec','Olomouc','České Budějovice',
+    'Hradec Králové','Ústí nad Labem','Pardubice','Zlín','Havířov','Kladno','Most','Opava',
+    'Frýdek-Místek','Karviná','Jihlava','Teplice','Děčín','Karlovy Vary','Chomutov',
+    'Jablonec nad Nisou','Mladá Boleslav','Prostějov','Přerov','Česká Lípa','Třebíč',
+    'Znojmo','Příbram','Cheb','Trutnov','Šumperk','Vsetín','Kroměříž','Hodonín',
+    'Litoměřice','Uherské Hradiště','Nový Jičín','Benešov','Blansko','Bohumín',
+    'Sokolov','Strakonice','Tábor','Písek','Krnov','Třinec','Orlová','Havlíčkův Brod',
+    'Chrudim','Svitavy','Klatovy','Náchod','Jičín','Český Krumlov','Pelhřimov',
+    'Žďár nad Sázavou','Vyškov','Uherský Brod','Valašské Meziříčí','Rožnov pod Radhoštěm',
+    'Varnsdorf','Louny','Rakovník','Beroun','Mělník','Nymburk','Kutná Hora','Slaný',
+    'Neratovice','Říčany','Otrokovice','Český Těšín','Hlučín','Kopřivnice',
+    'Rokycany','Kolín','Poděbrady','Kuřim','Tišnov','Holešov','Napajedla',
+    'Staré Město','Bystřice pod Hostýnem','Frýdlant nad Ostravicí','Jablunkov',
+    'Hranice','Šternberk','Zábřeh','Litovel','Mohelnice','Jeseník',
+    'Nové Město na Moravě','Velké Meziříčí','Bystřice nad Pernštejnem',
+    'Roudnice nad Labem','Litvínov','Kadaň','Žatec','Bílina','Duchcov',
+    'Aš','Mariánské Lázně','Františkovy Lázně','Kraslice',
+    'Turnov','Nová Paka','Dvůr Králové nad Labem','Vrchlabí','Trutnov',
+    'Polička','Lanškroun','Ústí nad Orlicí','Litomyšl',
+    'Bruntál','Rýmařov','Kravaře','Bílovec',
+    'Uničov','Šumperk','Zábřeh','Mohelnice',
+  ];
 
   try {
     const { czNace = 'gastro', obec = '', pocet = 10000 } = req.body;
