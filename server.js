@@ -275,7 +275,7 @@ td{padding:9px 11px;vertical-align:middle;font-size:.78rem;}
   <div class="dp-body" id="dpBody"></div>
 </div>
 
-<div class="ver">v9</div>
+<div class="ver">v10</div>
 
 <script>
 let all=[], fil=[], pg=0, selIco=null;
@@ -470,7 +470,7 @@ function buildResult(s) {
 }
 
 app.get('/', (req, res) => res.send(HTML));
-app.get('/ping', (req, res) => res.json({ ok: true, v: '9' }));
+app.get('/ping', (req, res) => res.json({ ok: true, v: '10' }));
 
 // DEBUG - ukáže co reálně vrací ARES pro daný NACE kód
 app.get('/api/debug/:nace', async (req, res) => {
@@ -515,45 +515,56 @@ app.post('/api/search', async (req, res) => {
   }
 
   try {
-    const { czNace = 'gastro', obec = '', pocet = 200 } = req.body;
+    const { czNace = 'gastro', obec = '', pocet = 5000 } = req.body;
     const inputKey = Array.isArray(czNace) ? czNace.join(',') : String(czNace);
     const cfg = QUERY_MAP[inputKey] || { query:['56'], accept2:['56'] };
-    const maxCount = Math.min(Number(pocet)||200, 500);
+    const maxCount = Math.min(Number(pocet)||5000, 10000);
     const obecFilter = obec ? obec.trim().toLowerCase() : '';
+    const PAGE = 1000; // max stránka ARES API
 
     const seen = new Set();
     const results = [];
 
     for (const qNace of cfg.query) {
-      const fetchCount = obecFilter ? 1000 : 500;
-      const payload = { czNace: [qNace], pocet: fetchCount, start: 0 };
+      let start = 0;
+      let pocetCelkem = null;
 
-      console.log('ARES request:', JSON.stringify(payload));
-      const r = await aresRequest('POST', SEARCH_PATH, payload);
-      console.log('ARES response: status=' + r.status + ' pocetCelkem=' + (r.json?.pocetCelkem) + ' returned=' + (r.json?.ekonomickeSubjekty?.length));
+      do {
+        const payload = { czNace: [qNace], pocet: PAGE, start };
+        console.log('ARES request:', JSON.stringify(payload));
+        const r = await aresRequest('POST', SEARCH_PATH, payload);
+        console.log('ARES response: status=' + r.status + ' pocetCelkem=' + r.json?.pocetCelkem + ' returned=' + r.json?.ekonomickeSubjekty?.length + ' start=' + start);
 
-      if (r.status !== 200 || !r.json) {
-        console.log('ARES error nace=' + qNace + ':', r.raw?.slice(0,300));
-        continue;
-      }
-
-      const subjekty = r.json.ekonomickeSubjekty || [];
-      for (const s of subjekty) {
-        if (seen.has(s.ico)) continue;
-        if (!naceMatch(s, cfg)) continue;
-
-        const result = buildResult(s);
-
-        if (obecFilter) {
-          const match = result.obec.toLowerCase().includes(obecFilter) ||
-                        result.addr.toLowerCase().includes(obecFilter);
-          if (!match) continue;
+        if (r.status !== 200 || !r.json) {
+          console.log('ARES error nace=' + qNace + ' start=' + start + ':', r.raw?.slice(0,300));
+          break;
         }
 
-        seen.add(s.ico);
-        results.push(result);
+        if (pocetCelkem === null) pocetCelkem = r.json.pocetCelkem || 0;
+        const subjekty = r.json.ekonomickeSubjekty || [];
+        if (subjekty.length === 0) break;
+
+        for (const s of subjekty) {
+          if (seen.has(s.ico)) continue;
+          if (!naceMatch(s, cfg)) continue;
+
+          const result = buildResult(s);
+
+          if (obecFilter) {
+            const match = result.obec.toLowerCase().includes(obecFilter) ||
+                          result.addr.toLowerCase().includes(obecFilter);
+            if (!match) continue;
+          }
+
+          seen.add(s.ico);
+          results.push(result);
+        }
+
+        start += PAGE;
+        // Pokračuj dokud: jsou další stránky A nepřekročili jsme maxCount
         if (results.length >= maxCount) break;
-      }
+      } while (start < (pocetCelkem || 0));
+
       if (results.length >= maxCount) break;
     }
 
