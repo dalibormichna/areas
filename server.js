@@ -275,7 +275,7 @@ td{padding:9px 11px;vertical-align:middle;font-size:.78rem;}
   <div class="dp-body" id="dpBody"></div>
 </div>
 
-<div class="ver">v15</div>
+<div class="ver">v16</div>
 
 <script>
 let all=[], fil=[], pg=0, selIco=null;
@@ -470,7 +470,7 @@ function buildResult(s) {
 }
 
 app.get('/', (req, res) => res.send(HTML));
-app.get('/ping', (req, res) => res.json({ ok: true, v: '15' }));
+app.get('/ping', (req, res) => res.json({ ok: true, v: '16' }));
 
 // DEBUG
 app.get('/api/debug/:nace', async (req, res) => {
@@ -511,9 +511,35 @@ app.post('/api/search', async (req, res) => {
     '5520':   { query:['5520'],         accept2:['55'] },
   };
 
-  // ARES má hardcoded limit ~492 výsledků pro czNace dotazy bez ohledu na sidlo filtr.
-  // Řešení: dotazujeme po prvním písmenu názvu (A-Z + číslice) — každá skupina vrátí jiných 492.
-  const PREFIXES = 'ABCDEFGHIJKLMNOPQRSTUVWXYZÁČĎÉĚÍŇÓŘŠŤÚŮÝŽ0123456789'.split('');
+  // ARES má hardcoded limit 492 výsledků pro czNace filtr.
+  // obchodniJmeno funguje jako přesná shoda slova (ne prefix).
+  // Strategie: hledáme podle typických gastro/ubytování slov, lokálně filtrujeme czNace.
+  const GASTRO_WORDS = [
+    'Restaurace','Restaurant','Hospoda','Hostinec','Pivnice','Pivovárek','Pivovar',
+    'Kavárna','Caffe','Cafe','Bar','Bistro','Bufet','Jídelna','Kantýna',
+    'Pizzeria','Pizza','Sushi','Kebab','Burger','Grill','Grilování',
+    'Cukrárna','Pekárna','Catering','Vývařovna','Pohostinství',
+    'Hotel','Penzion','Hostel','Motel','Resort','Apartmán','Apartmány',
+    'Ubytování','Chata','Chalupa','Kemp','Camping',
+  ];
+
+  const UBYTOVANI_WORDS = [
+    'Hotel','Penzion','Hostel','Motel','Resort','Apartmán','Apartmány',
+    'Ubytování','Chata','Chalupa','Kemp','Camping',
+  ];
+
+  const WORD_MAP = {
+    'gastro': GASTRO_WORDS,
+    '56':     ['Restaurace','Restaurant','Hospoda','Hostinec','Pivnice','Kavárna','Caffe','Cafe','Bar','Bistro','Bufet','Jídelna','Kantýna','Pizzeria','Pizza','Sushi','Kebab','Burger','Grill','Cukrárna','Catering','Vývařovna','Pohostinství'],
+    '5610':   ['Restaurace','Restaurant','Hospoda','Hostinec','Pohostinství','Pizzeria','Pizza','Sushi','Kebab','Burger','Grill','Bistro'],
+    '5621':   ['Catering','Vývařovna'],
+    '5629':   ['Jídelna','Kantýna','Bufet','Vývařovna'],
+    '5630':   ['Pivnice','Bar','Kavárna','Caffe','Cafe','Cukrárna'],
+    '55':     UBYTOVANI_WORDS,
+    '5510':   ['Hotel','Motel','Resort'],
+    '5590':   ['Penzion','Hostel','Apartmán','Apartmány','Ubytování'],
+    '5520':   ['Chata','Chalupa','Kemp','Camping'],
+  };
   function naceMatch(s, cfg) {
     const codes = [...(s.czNace2008 || []), ...(s.czNace || [])];
     // accept2: přijmout vše kde je kód přesně "56" nebo "55" (subjekt má gastro/ubytování jako hlavní nebo vedlejší obor)
@@ -538,45 +564,41 @@ app.post('/api/search', async (req, res) => {
     const seen = new Set();
     const results = [];
 
-    for (const qNace of cfg.query) {
-      const scopes = obecFilter
-        ? [{ sidlo: { nazevObce: obec.trim() } }]
-        : [{}];  // bez filtru - jen základní dotaz dokud nevíme co funguje
+    const words = WORD_MAP[inputKey] || WORD_MAP['gastro'];
+    // Přijmeme subjekty kde czNace nebo czNace2008 obsahuje prefix odpovídající skupině
+    const nacePrefix = cfg.accept2 || (cfg.accept4 ? cfg.accept4.map(c=>c.slice(0,2)) : ['56','55']);
 
-      for (const scope of scopes) {
-        let start = 0;
-        let pocetCelkem = null;
+    for (const word of words) {
+      let start = 0;
+      let pocetCelkem = null;
 
-        do {
-          const payload = { czNace: [qNace], pocet: PAGE, start, ...scope };
-          const r = await aresRequest('POST', SEARCH_PATH, payload);
-          console.log('ARES nace=' + qNace + ' status=' + r.status + ' pocetCelkem=' + r.json?.pocetCelkem + ' returned=' + r.json?.ekonomickeSubjekty?.length);
+      do {
+        const payload = { obchodniJmeno: word, pocet: PAGE, start };
+        if (obecFilter) payload.sidlo = { nazevObce: obec.trim() };
 
-          if (r.status !== 200 || !r.json) break;
+        const r = await aresRequest('POST', SEARCH_PATH, payload);
+        console.log('ARES word="' + word + '" status=' + r.status + ' pocetCelkem=' + r.json?.pocetCelkem + ' returned=' + r.json?.ekonomickeSubjekty?.length);
 
-          if (pocetCelkem === null) pocetCelkem = r.json.pocetCelkem || 0;
-          const subjekty = r.json.ekonomickeSubjekty || [];
-          if (subjekty.length === 0) break;
+        if (r.status !== 200 || !r.json) break;
 
-          for (const s of subjekty) {
-            if (seen.has(s.ico)) continue;
-            if (!naceMatch(s, cfg)) continue;
-            const result = buildResult(s);
-            if (obecFilter) {
-              const match = result.obec.toLowerCase().includes(obecFilter) ||
-                            result.addr.toLowerCase().includes(obecFilter);
-              if (!match) continue;
-            }
-            seen.add(s.ico);
-            results.push(result);
-          }
+        if (pocetCelkem === null) pocetCelkem = r.json.pocetCelkem || 0;
+        const subjekty = r.json.ekonomickeSubjekty || [];
+        if (subjekty.length === 0) break;
 
-          start += PAGE;
-          if (results.length >= maxCount) break;
-        } while (start < (pocetCelkem || 0));
+        for (const s of subjekty) {
+          if (seen.has(s.ico)) continue;
+          // Filtr: subjekt musí mít gastro/ubytování NACE kód
+          const codes = [...(s.czNace2008 || []), ...(s.czNace || [])];
+          const isGastro = codes.some(c => nacePrefix.some(p => c === p || c.startsWith(p)));
+          if (!isGastro) continue;
+          seen.add(s.ico);
+          results.push(buildResult(s));
+        }
 
+        start += PAGE;
         if (results.length >= maxCount) break;
-      }
+      } while (start < (pocetCelkem || 0));
+
       if (results.length >= maxCount) break;
     }
 
