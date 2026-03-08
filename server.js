@@ -275,7 +275,7 @@ td{padding:9px 11px;vertical-align:middle;font-size:.78rem;}
   <div class="dp-body" id="dpBody"></div>
 </div>
 
-<div class="ver">v18</div>
+<div class="ver">v19</div>
 
 <script>
 let all=[], fil=[], pg=0, selIco=null;
@@ -486,28 +486,17 @@ function buildResult(s) {
 }
 
 app.get('/', (req, res) => res.send(HTML));
-app.get('/ping', (req, res) => res.json({ ok: true, v: '18' }));
+app.get('/ping', (req, res) => res.json({ ok: true, v: '19' }));
 
 // DEBUG
 app.get('/api/debug/:nace', async (req, res) => {
   try {
     const nace = req.params.nace;
-    // Speciální případ: lookup konkrétního IČO
     if (/^\d{8}$/.test(nace)) {
       const r = await aresRequest('GET', DETAIL_PATH + nace, null);
-      return res.json({ ico: nace, status: r.status, czNace: r.json?.czNace, czNace2008: r.json?.czNace2008, name: r.json?.obchodniJmeno });
+      return res.json({ ico: nace, status: r.status, czNace: r.json?.czNace, czNace2008: r.json?.czNace2008, name: r.json?.obchodniJmeno, obec: r.json?.sidlo?.nazevObce });
     }
-    const tests = [
-      { czNace: [nace], pocet: 3, start: 0 },
-      { pocet: 3, start: 0, obchodniJmeno: 'Restaurace' },
-      { pocet: 3, start: 0, obchodniJmeno: 'Bistro' },
-    ];
-    const results = [];
-    for (const payload of tests) {
-      const r = await aresRequest('POST', SEARCH_PATH, payload);
-      results.push({ payload, status: r.status, pocetCelkem: r.json?.pocetCelkem, names: (r.json?.ekonomickeSubjekty||[]).slice(0,3).map(s=>s.obchodniJmeno) });
-    }
-    res.json(results);
+    res.json({ error: 'use 8-digit ICO' });
   } catch(e) { res.json({ error: e.message }); }
 });
 app.post('/api/search', async (req, res) => {
