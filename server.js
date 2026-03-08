@@ -275,7 +275,7 @@ td{padding:9px 11px;vertical-align:middle;font-size:.78rem;}
   <div class="dp-body" id="dpBody"></div>
 </div>
 
-<div class="ver">v10</div>
+<div class="ver">v11</div>
 
 <script>
 let all=[], fil=[], pg=0, selIco=null;
@@ -321,7 +321,7 @@ async function fetchData(){
     const r=await fetch('/api/search',{
       method:'POST',
       headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({czNace:tv,obec,pocet:500})
+      body:JSON.stringify({czNace:tv,obec,pocet:10000})
     });
     const res=await r.json();
     if(res.ok){
@@ -470,7 +470,7 @@ function buildResult(s) {
 }
 
 app.get('/', (req, res) => res.send(HTML));
-app.get('/ping', (req, res) => res.json({ ok: true, v: '10' }));
+app.get('/ping', (req, res) => res.json({ ok: true, v: '11' }));
 
 // DEBUG - ukáže co reálně vrací ARES pro daný NACE kód
 app.get('/api/debug/:nace', async (req, res) => {
