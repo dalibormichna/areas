@@ -275,7 +275,7 @@ td{padding:9px 11px;vertical-align:middle;font-size:.78rem;}
   <div class="dp-body" id="dpBody"></div>
 </div>
 
-<div class="ver">v12</div>
+<div class="ver">v14</div>
 
 <script>
 let all=[], fil=[], pg=0, selIco=null;
@@ -470,14 +470,23 @@ function buildResult(s) {
 }
 
 app.get('/', (req, res) => res.send(HTML));
-app.get('/ping', (req, res) => res.json({ ok: true, v: '12' }));
+app.get('/ping', (req, res) => res.json({ ok: true, v: '14' }));
 
-// DEBUG - ukáže co reálně vrací ARES pro daný NACE kód
+// DEBUG - testuje různé payload kombinace
 app.get('/api/debug/:nace', async (req, res) => {
   try {
-    const payload = { czNace: [req.params.nace], pocet: 3, start: 0 };
-    const r = await aresRequest('POST', SEARCH_PATH, payload);
-    res.json({ status: r.status, payload, raw: r.raw || null, json: r.json });
+    const nace = req.params.nace;
+    // Test 1: bez sidlo
+    const r1 = await aresRequest('POST', SEARCH_PATH, { czNace: [nace], pocet: 3, start: 0 });
+    // Test 2: s kodKraje=19 (Praha)
+    const r2 = await aresRequest('POST', SEARCH_PATH, { czNace: [nace], pocet: 3, start: 0, sidlo: { kodKraje: 19 } });
+    // Test 3: s nazevObce
+    const r3 = await aresRequest('POST', SEARCH_PATH, { czNace: [nace], pocet: 3, start: 0, sidlo: { nazevObce: 'Praha' } });
+    res.json({
+      bez_sidlo:   { status: r1.status, pocetCelkem: r1.json?.pocetCelkem },
+      kodKraje_19: { status: r2.status, pocetCelkem: r2.json?.pocetCelkem, error: r2.raw?.slice(0,200) },
+      nazevObce:   { status: r3.status, pocetCelkem: r3.json?.pocetCelkem, error: r3.raw?.slice(0,200) },
+    });
   } catch(e) { res.json({ error: e.message }); }
 });
 app.post('/api/search', async (req, res) => {
@@ -488,21 +497,21 @@ app.post('/api/search', async (req, res) => {
   // nebo musí začínat prefixem skupiny (startsWith pro 2místné agregace).
 
   const QUERY_MAP = {
-    'gastro': { query:['56','55'], accept2:['56','55'] },
-    '56':     { query:['56'],      accept2:['56'] },
-    '5610':   { query:['56'],      accept4:['5610'] },
-    '5621':   { query:['56'],      accept4:['5621'] },
-    '5629':   { query:['56'],      accept4:['5629'] },
-    '5630':   { query:['56'],      accept4:['5630'] },
-    '55':     { query:['55'],      accept2:['55'] },
-    '5510':   { query:['55'],      accept4:['5510'] },
-    '5590':   { query:['55'],      accept4:['5590'] },
-    '5520':   { query:['55'],      accept4:['5520'] },
+    'gastro': { query:['56','5510','5520','5590'], accept2:['56','55'] },
+    '56':     { query:['56'],           accept2:['56'] },
+    '5610':   { query:['56'],           accept4:['5610'] },
+    '5621':   { query:['56'],           accept4:['5621'] },
+    '5629':   { query:['56'],           accept4:['5629'] },
+    '5630':   { query:['56'],           accept4:['5630'] },
+    '55':     { query:['5510','5520','5590'], accept2:['55'] },
+    '5510':   { query:['5510'],         accept2:['55'] },
+    '5590':   { query:['5590'],         accept2:['55'] },
+    '5520':   { query:['5520'],         accept2:['55'] },
   };
 
-  // Kódy krajů ČR pro ARES API (kodKraje v sidlo filtru)
-  // Dotazujeme po krajích abychom obešli limit ~500 bez sidlo filtru
-  const KRAJE = [19,27,35,41,51,63,72,80,86,99,64,71,74,81];
+  // ARES má hardcoded limit ~492 výsledků pro czNace dotazy bez ohledu na sidlo filtr.
+  // Řešení: dotazujeme po prvním písmenu názvu (A-Z + číslice) — každá skupina vrátí jiných 492.
+  const PREFIXES = 'ABCDEFGHIJKLMNOPQRSTUVWXYZÁČĎÉĚÍŇÓŘŠŤÚŮÝŽ0123456789'.split('');
   function naceMatch(s, cfg) {
     const codes = [...(s.czNace2008 || []), ...(s.czNace || [])];
     // accept2: přijmout vše kde je kód přesně "56" nebo "55" (subjekt má gastro/ubytování jako hlavní nebo vedlejší obor)
@@ -528,11 +537,9 @@ app.post('/api/search', async (req, res) => {
     const results = [];
 
     for (const qNace of cfg.query) {
-      // Bez filtru města: dotazuj po krajích (obejde limit ~500 pro celé ČR)
-      // S filtrem města: jeden dotaz s nazevObce
       const scopes = obecFilter
         ? [{ sidlo: { nazevObce: obec.trim() } }]
-        : KRAJE.map(k => ({ sidlo: { kodKraje: k } }));
+        : PREFIXES.map(p => ({ obchodniJmeno: p }));
 
       for (const scope of scopes) {
         let start = 0;
@@ -540,14 +547,10 @@ app.post('/api/search', async (req, res) => {
 
         do {
           const payload = { czNace: [qNace], pocet: PAGE, start, ...scope };
-          console.log('ARES request:', JSON.stringify(payload));
           const r = await aresRequest('POST', SEARCH_PATH, payload);
-          console.log('ARES response: status=' + r.status + ' pocetCelkem=' + r.json?.pocetCelkem + ' returned=' + r.json?.ekonomickeSubjekty?.length + ' start=' + start + ' scope=' + JSON.stringify(scope));
+          console.log('ARES nace=' + qNace + ' scope=' + JSON.stringify(scope) + ' status=' + r.status + ' pocetCelkem=' + r.json?.pocetCelkem + ' returned=' + r.json?.ekonomickeSubjekty?.length);
 
-          if (r.status !== 200 || !r.json) {
-            console.log('ARES error:', r.raw?.slice(0, 300));
-            break;
-          }
+          if (r.status !== 200 || !r.json) break;
 
           if (pocetCelkem === null) pocetCelkem = r.json.pocetCelkem || 0;
           const subjekty = r.json.ekonomickeSubjekty || [];
@@ -557,6 +560,11 @@ app.post('/api/search', async (req, res) => {
             if (seen.has(s.ico)) continue;
             if (!naceMatch(s, cfg)) continue;
             const result = buildResult(s);
+            if (obecFilter) {
+              const match = result.obec.toLowerCase().includes(obecFilter) ||
+                            result.addr.toLowerCase().includes(obecFilter);
+              if (!match) continue;
+            }
             seen.add(s.ico);
             results.push(result);
           }
