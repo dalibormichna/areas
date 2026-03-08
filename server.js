@@ -275,7 +275,7 @@ td{padding:9px 11px;vertical-align:middle;font-size:.78rem;}
   <div class="dp-body" id="dpBody"></div>
 </div>
 
-<div class="ver">v17</div>
+<div class="ver">v18</div>
 
 <script>
 let all=[], fil=[], pg=0, selIco=null;
@@ -486,7 +486,7 @@ function buildResult(s) {
 }
 
 app.get('/', (req, res) => res.send(HTML));
-app.get('/ping', (req, res) => res.json({ ok: true, v: '17' }));
+app.get('/ping', (req, res) => res.json({ ok: true, v: '18' }));
 
 // DEBUG
 app.get('/api/debug/:nace', async (req, res) => {
@@ -584,9 +584,36 @@ app.post('/api/search', async (req, res) => {
     const results = [];
 
     const words = WORD_MAP[inputKey] || WORD_MAP['gastro'];
-    // Přijmeme subjekty kde czNace nebo czNace2008 obsahuje prefix odpovídající skupině
     const nacePrefix = cfg.accept2 || (cfg.accept4 ? cfg.accept4.map(c=>c.slice(0,2)) : ['56','55']);
 
+    // Pomocná funkce pro zpracování jedné stránky výsledků
+    const processSubjekty = (subjekty) => {
+      for (const s of subjekty) {
+        if (seen.has(s.ico)) continue;
+        const codes = [...(s.czNace2008 || []), ...(s.czNace || [])];
+        const isGastro = codes.some(c => nacePrefix.some(p => c === p || c.startsWith(p)));
+        if (!isGastro) continue;
+        const result = buildResult(s);
+        if (obecFilter) {
+          const match = result.obec.toLowerCase().includes(obecFilter) ||
+                        result.addr.toLowerCase().includes(obecFilter);
+          if (!match) continue;
+        }
+        seen.add(s.ico);
+        results.push(result);
+      }
+    };
+
+    // 1. Nejdřív czNace dotaz (vrátí ~492 ale zachytí podniky bez generického názvu)
+    const baseNaces = cfg.query || ['56'];
+    for (const qNace of baseNaces) {
+      const payload = { czNace: [qNace], pocet: 1000, start: 0 };
+      if (obecFilter) payload.sidlo = { nazevObce: obec.trim() };
+      const r = await aresRequest('POST', SEARCH_PATH, payload);
+      if (r.status === 200 && r.json) processSubjekty(r.json.ekonomickeSubjekty || []);
+    }
+
+    // 2. Pak keyword search pro ty co czNace dotaz nevracel
     for (const word of words) {
       let start = 0;
       let pocetCelkem = null;
@@ -596,7 +623,7 @@ app.post('/api/search', async (req, res) => {
         if (obecFilter) payload.sidlo = { nazevObce: obec.trim() };
 
         const r = await aresRequest('POST', SEARCH_PATH, payload);
-        console.log('ARES word="' + word + '" status=' + r.status + ' pocetCelkem=' + r.json?.pocetCelkem + ' returned=' + r.json?.ekonomickeSubjekty?.length);
+        console.log('ARES word="' + word + '" status=' + r.status + ' pocetCelkem=' + r.json?.pocetCelkem + ' new=' + (r.json?.ekonomickeSubjekty||[]).filter(s=>!seen.has(s.ico)).length);
 
         if (r.status !== 200 || !r.json) break;
 
@@ -604,15 +631,7 @@ app.post('/api/search', async (req, res) => {
         const subjekty = r.json.ekonomickeSubjekty || [];
         if (subjekty.length === 0) break;
 
-        for (const s of subjekty) {
-          if (seen.has(s.ico)) continue;
-          // Filtr: subjekt musí mít gastro/ubytování NACE kód
-          const codes = [...(s.czNace2008 || []), ...(s.czNace || [])];
-          const isGastro = codes.some(c => nacePrefix.some(p => c === p || c.startsWith(p)));
-          if (!isGastro) continue;
-          seen.add(s.ico);
-          results.push(buildResult(s));
-        }
+        processSubjekty(subjekty);
 
         start += PAGE;
         if (results.length >= maxCount) break;
