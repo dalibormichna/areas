@@ -275,7 +275,7 @@ td{padding:9px 11px;vertical-align:middle;font-size:.78rem;}
   <div class="dp-body" id="dpBody"></div>
 </div>
 
-<div class="ver">v9</div>
+<div class="ver">v8</div>
 
 <script>
 let all=[], fil=[], pg=0, selIco=null;
@@ -470,7 +470,7 @@ function buildResult(s) {
 }
 
 app.get('/', (req, res) => res.send(HTML));
-app.get('/ping', (req, res) => res.json({ ok: true, v: '9' }));
+app.get('/ping', (req, res) => res.json({ ok: true, v: '8' }));
 
 // DEBUG - ukáže co reálně vrací ARES pro daný NACE kód
 app.get('/api/debug/:nace', async (req, res) => {
