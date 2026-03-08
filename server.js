@@ -275,7 +275,7 @@ td{padding:9px 11px;vertical-align:middle;font-size:.78rem;}
   <div class="dp-body" id="dpBody"></div>
 </div>
 
-<div class="ver">v19</div>
+<div class="ver">v20</div>
 
 <script>
 let all=[], fil=[], pg=0, selIco=null;
@@ -486,7 +486,7 @@ function buildResult(s) {
 }
 
 app.get('/', (req, res) => res.send(HTML));
-app.get('/ping', (req, res) => res.json({ ok: true, v: '19' }));
+app.get('/ping', (req, res) => res.json({ ok: true, v: '20' }));
 
 // DEBUG
 app.get('/api/debug/:nace', async (req, res) => {
@@ -494,9 +494,20 @@ app.get('/api/debug/:nace', async (req, res) => {
     const nace = req.params.nace;
     if (/^\d{8}$/.test(nace)) {
       const r = await aresRequest('GET', DETAIL_PATH + nace, null);
-      return res.json({ ico: nace, status: r.status, czNace: r.json?.czNace, czNace2008: r.json?.czNace2008, name: r.json?.obchodniJmeno, obec: r.json?.sidlo?.nazevObce });
+      return res.json({ ico: nace, status: r.status, czNace: r.json?.czNace, czNace2008: r.json?.czNace2008, name: r.json?.obchodniJmeno, obec: r.json?.sidlo?.nazevObce, kodOkresu: r.json?.sidlo?.kodOkresu, kodKraje: r.json?.sidlo?.kodKraje });
     }
-    res.json({ error: 'use 8-digit ICO' });
+    // Test kodOkresu — Frýdek-Místek okres = 3806
+    const tests = [
+      { czNace: ['56'], pocet: 5, start: 0, sidlo: { kodOkresu: 3806 } },
+      { czNace: ['56'], pocet: 5, start: 0, sidlo: { kodOkresu: 3806 }, razeni: ['ICO'] },
+      { czNace: ['56'], pocet: 5, start: 492, sidlo: { kodOkresu: 3806 } },
+    ];
+    const out = [];
+    for (const p of tests) {
+      const r = await aresRequest('POST', SEARCH_PATH, p);
+      out.push({ payload: p, status: r.status, pocetCelkem: r.json?.pocetCelkem, names: (r.json?.ekonomickeSubjekty||[]).map(s=>s.obchodniJmeno) });
+    }
+    res.json(out);
   } catch(e) { res.json({ error: e.message }); }
 });
 app.post('/api/search', async (req, res) => {
