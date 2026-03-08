@@ -275,7 +275,7 @@ td{padding:9px 11px;vertical-align:middle;font-size:.78rem;}
   <div class="dp-body" id="dpBody"></div>
 </div>
 
-<div class="ver">v16</div>
+<div class="ver">v17</div>
 
 <script>
 let all=[], fil=[], pg=0, selIco=null;
@@ -394,7 +394,23 @@ function renderTable(){
       <td>\${fmt(d.date)}</td>
       <td class="td-addr">\${d.addr}</td>
     </tr>\`).join('');
+  renderPgn();
 }
+
+function renderPgn(){
+  const total=fil.length;
+  const pages=Math.ceil(total/PS);
+  if(pages<=1){document.getElementById('pgn').innerHTML='';return;}
+  let html=\`<span>Strana \${pg+1} / \${pages} (\${total} záznamů)</span>\`;
+  if(pg>0) html+=\`<button class="pb" onclick="goPage(\${pg-1})">← Předchozí</button>\`;
+  // max 7 stránek kolem aktuální
+  const from=Math.max(0,pg-3), to=Math.min(pages-1,pg+3);
+  for(let i=from;i<=to;i++) html+=\`<button class="pb\${i===pg?' act':''}" onclick="goPage(\${i})">\${i+1}</button>\`;
+  if(pg<pages-1) html+=\`<button class="pb" onclick="goPage(\${pg+1})">Další →</button>\`;
+  document.getElementById('pgn').innerHTML=html;
+}
+
+function goPage(n){pg=n;renderTable();window.scrollTo(0,0);}
 
 async function openDetail(ico){
   const d=all.find(x=>x.ico===ico);
@@ -470,18 +486,21 @@ function buildResult(s) {
 }
 
 app.get('/', (req, res) => res.send(HTML));
-app.get('/ping', (req, res) => res.json({ ok: true, v: '16' }));
+app.get('/ping', (req, res) => res.json({ ok: true, v: '17' }));
 
 // DEBUG
 app.get('/api/debug/:nace', async (req, res) => {
   try {
     const nace = req.params.nace;
+    // Speciální případ: lookup konkrétního IČO
+    if (/^\d{8}$/.test(nace)) {
+      const r = await aresRequest('GET', DETAIL_PATH + nace, null);
+      return res.json({ ico: nace, status: r.status, czNace: r.json?.czNace, czNace2008: r.json?.czNace2008, name: r.json?.obchodniJmeno });
+    }
     const tests = [
       { czNace: [nace], pocet: 3, start: 0 },
-      { czNace: [nace], pocet: 3, start: 0, obchodniJmeno: 'Rest' },
-      { czNace: [nace], pocet: 3, start: 0, obchodniJmeno: 'rest' },
-      { czNace: [nace], pocet: 3, start: 0, obchodniJmeno: 'Restaur' },
       { pocet: 3, start: 0, obchodniJmeno: 'Restaurace' },
+      { pocet: 3, start: 0, obchodniJmeno: 'Bistro' },
     ];
     const results = [];
     for (const payload of tests) {
