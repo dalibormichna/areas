@@ -481,38 +481,43 @@ app.get('/api/debug/:nace', async (req, res) => {
   } catch(e) { res.json({ error: e.message }); }
 });
 app.post('/api/search', async (req, res) => {
-  // ARES API přijímá jen 2-místné prefixové kódy (56, 55).
-  // 4-místné kódy vrátí 0 výsledků. Proto:
-  //   1. Dotaz vždy posíláme s 2-místným kódem (56 nebo 55)
-  //   2. Výsledky lokálně filtrujeme podle pole czNace2008 které obsahuje přesné 4-místné kódy
-  //
-  // CZ-NACE 4-místné kódy (pro lokální filtrování):
-  //   5610 = restaurace, pohostinství, rychlé občerstvení
-  //   5621 = catering
-  //   5629 = závodní/školní jídelny, vývařovny, bufety
-  //   5630 = bary, kavárny, pivnice
-  //   5510 = hotely
-  //   5520 = kempy, chaty
-  //   5590 = penziony, hostely
+  // ARES API přijímá jen 2-místné kódy (56, 55) — 4místné vrátí 0 výsledků.
+  // Pole czNace2008 v odpovědi obsahuje kódy různých délek: "56", "5610", "25610", "85321" atd.
+  // POZOR: "25610" je výroba keramiky, NE restaurace — nesmíme použít endsWith!
+  // Správný filtr: kód musí být PŘESNĚ roven hledanému kódu (n === a),
+  // nebo musí začínat prefixem skupiny (startsWith pro 2místné agregace).
 
-  // Co poslat do ARES a jaké 4místné kódy akceptovat lokálně
   const QUERY_MAP = {
-    'gastro': { query:['56','55'], accept:['5610','5621','5629','5630','5510','5520','5590'] },
-    '56':     { query:['56'],      accept:['5610','5621','5629','5630'] },
-    '5610':   { query:['56'],      accept:['5610'] },
-    '5621':   { query:['56'],      accept:['5621'] },
-    '5629':   { query:['56'],      accept:['5629'] },
-    '5630':   { query:['56'],      accept:['5630'] },
-    '55':     { query:['55'],      accept:['5510','5520','5590','5530'] },
-    '5510':   { query:['55'],      accept:['5510'] },
-    '5590':   { query:['55'],      accept:['5590'] },
-    '5520':   { query:['55'],      accept:['5520'] },
+    'gastro': { query:['56','55'], accept2:['56','55'] },
+    '56':     { query:['56'],      accept2:['56'] },
+    '5610':   { query:['56'],      accept4:['5610'] },
+    '5621':   { query:['56'],      accept4:['5621'] },
+    '5629':   { query:['56'],      accept4:['5629'] },
+    '5630':   { query:['56'],      accept4:['5630'] },
+    '55':     { query:['55'],      accept2:['55'] },
+    '5510':   { query:['55'],      accept4:['5510'] },
+    '5590':   { query:['55'],      accept4:['5590'] },
+    '5520':   { query:['55'],      accept4:['5520'] },
   };
+
+  // Vrátí true pokud subjekt odpovídá NACE filtru
+  function naceMatch(s, cfg) {
+    const codes = [...(s.czNace2008 || []), ...(s.czNace || [])];
+    // accept2: přijmout vše kde je kód přesně "56" nebo "55" (subjekt má gastro/ubytování jako hlavní nebo vedlejší obor)
+    if (cfg.accept2) {
+      return codes.some(c => cfg.accept2.includes(c));
+    }
+    // accept4: přijmout jen pokud kód je PŘESNĚ 4místný kód (ne 25610, ale 5610)
+    if (cfg.accept4) {
+      return codes.some(c => cfg.accept4.includes(c));
+    }
+    return true;
+  }
 
   try {
     const { czNace = 'gastro', obec = '', pocet = 200 } = req.body;
     const inputKey = Array.isArray(czNace) ? czNace.join(',') : String(czNace);
-    const cfg = QUERY_MAP[inputKey] || { query:['56'], accept:[] };
+    const cfg = QUERY_MAP[inputKey] || { query:['56'], accept2:['56'] };
     const maxCount = Math.min(Number(pocet)||200, 500);
     const obecFilter = obec ? obec.trim().toLowerCase() : '';
 
@@ -535,17 +540,10 @@ app.post('/api/search', async (req, res) => {
       const subjekty = r.json.ekonomickeSubjekty || [];
       for (const s of subjekty) {
         if (seen.has(s.ico)) continue;
-
-        // Lokální filtr: subjekt musí mít aspoň jeden akceptovaný 4místný NACE kód
-        // Pole czNace2008 obsahuje přesné kódy jako "25610", "5610", "85321" atd.
-        // Pole czNace obsahuje zkrácené kódy jako "56", "5610"
-        const naceAll = [...(s.czNace2008 || []), ...(s.czNace || [])];
-        const hasMatch = cfg.accept.length === 0 || naceAll.some(n => cfg.accept.some(a => n === a || n.endsWith(a)));
-        if (!hasMatch) continue;
+        if (!naceMatch(s, cfg)) continue;
 
         const result = buildResult(s);
 
-        // Město filtr
         if (obecFilter) {
           const match = result.obec.toLowerCase().includes(obecFilter) ||
                         result.addr.toLowerCase().includes(obecFilter);
@@ -553,9 +551,6 @@ app.post('/api/search', async (req, res) => {
         }
 
         seen.add(s.ico);
-        // Ulož nejlepší matching NACE kód (4místný pokud možno)
-        const bestNace = naceAll.find(n => cfg.accept.some(a => n === a || n.endsWith(a))) || result.nace;
-        result.nace = bestNace.length > 4 ? bestNace.slice(-4) : bestNace;
         results.push(result);
         if (results.length >= maxCount) break;
       }
